@@ -672,3 +672,22 @@ func TestCanonicalIssueIDGitLabHostDisambiguates(t *testing.T) {
 		t.Fatalf("gitlab.com and self-managed with same native produced identical IssueID %q", dotCom)
 	}
 }
+
+func TestTrackerRepoGitLabSSHPortIsTransportOnly(t *testing.T) {
+	project := domain.ProjectRecord{
+		ID:            "demo",
+		RepoOriginURL: "ssh://git@gitlab.icareweb.com:2200/group/project.git",
+		Config: domain.ProjectConfig{TrackerIntake: domain.TrackerIntakeConfig{
+			Enabled:  true,
+			Provider: domain.TrackerProviderGitLab,
+			Assignee: "alice",
+		}},
+	}
+	repo, ok := trackerRepo(project, project.Config.TrackerIntake.WithDefaults())
+	if !ok {
+		t.Fatal("trackerRepo ok = false")
+	}
+	if repo.Host != "gitlab.icareweb.com" {
+		t.Errorf("Host = %q, want gitlab.icareweb.com (ssh port dropped)", repo.Host)
+	}
+}

@@ -101,6 +101,13 @@ type GitLabConfig struct {
 	// AllowedHosts without an explicit entry fall back to the default token
 	// (AO_GITLAB_TOKEN / GITLAB_TOKEN / glab).
 	HostTokens map[string]string
+	// HostBaseURLs maps a self-managed host (as it appears in AllowedHosts) to
+	// the web/API base URL of that instance, for deployments whose web endpoint
+	// differs from the plain https://<host> default: a non-standard port, a
+	// subpath install (https://corp.example/gitlab), or plain http. The REST API
+	// base is "<base>/api/v4". Values are validated http(s) URLs without
+	// credentials, query, or fragment, and carry no trailing slash.
+	HostBaseURLs map[string]string
 }
 
 // DefaultAllowedOrigins are the browser origins the daemon's CORS boundary
@@ -343,6 +350,14 @@ func Load() (Config, error) {
 		cfg.GitLab.HostTokens = tokens
 	}
 
+	if raw, ok := os.LookupEnv("AO_GITLAB_HOST_BASE_URLS"); ok && raw != "" {
+		bases, err := parseHostBaseURLMap("AO_GITLAB_HOST_BASE_URLS", raw)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.GitLab.HostBaseURLs = bases
+	}
+
 	if raw, ok := os.LookupEnv("AO_TRACKER_INTAKE"); ok && strings.TrimSpace(raw) != "" {
 		v, err := parseToggleEnv("AO_TRACKER_INTAKE", raw)
 		if err != nil {
@@ -467,6 +482,25 @@ func parseHostTokenMap(name, raw string) (map[string]string, error) {
 		tokens[host] = token
 	}
 	return tokens, nil
+}
+
+// parseHostBaseURLMap parses a host=baseURL,host=baseURL map. Each base URL
+// must be an http(s) URL with a host and no credentials, query, or fragment; a
+// trailing slash is trimmed. Path segments are allowed (subpath installs).
+func parseHostBaseURLMap(name, raw string) (map[string]string, error) {
+	entries, err := parseHostTokenMap(name, raw)
+	if err != nil {
+		return nil, err
+	}
+	bases := make(map[string]string, len(entries))
+	for host, base := range entries {
+		u, err := url.Parse(base)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return nil, fmt.Errorf("invalid %s entry for %q: %q must be an http(s) URL with a host and no credentials, query, or fragment", name, host, base)
+		}
+		bases[host] = strings.TrimRight(base, "/")
+	}
+	return bases, nil
 }
 
 // parseCloudControlPlaneURL validates the cloud control plane base URL. Only

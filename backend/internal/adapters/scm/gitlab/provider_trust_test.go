@@ -209,41 +209,79 @@ func TestSelfManagedCustomPortRESTBase(t *testing.T) {
 	}
 }
 
-// TestSSHRemoteParsesToSameHostPortAsHTTPS verifies that
-// ssh://git@gitlab.internal:8443/group/repo.git parses to the same host and
-// port as https://gitlab.internal:8443/group/repo.git (review S1).
-func TestSSHRemoteParsesToSameHostPortAsHTTPS(t *testing.T) {
-	const customPortHost = "gitlab.internal:8443"
-
+// TestSSHPortIsTransportOnly verifies the SSH port never becomes part of the
+// web/API authority: ssh://git@gitlab.internal:2200/group/repo.git parses to
+// Host "gitlab.internal" (the same repo as https://gitlab.internal/...), while
+// an https:// port is the web port and is preserved.
+func TestSSHPortIsTransportOnly(t *testing.T) {
 	p, err := NewProvider(ProviderOptions{
 		Token:              StaticTokenSource("tok"),
 		SkipTokenPreflight: true,
-		AllowedHosts:       []string{customPortHost},
+		AllowedHosts:       []string{"gitlab.internal", "gitlab.web:8443"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, tc := range []struct {
+		name, remote, wantHost string
+	}{
+		{"ssh custom port dropped", "ssh://git@gitlab.internal:2200/group/repo.git", "gitlab.internal"},
+		{"ssh no port", "ssh://git@gitlab.internal/group/repo.git", "gitlab.internal"},
+		{"scp-like", "git@gitlab.internal:group/repo.git", "gitlab.internal"},
+		{"https default port", "https://gitlab.internal/group/repo.git", "gitlab.internal"},
+		{"https custom port kept", "https://gitlab.web:8443/group/repo.git", "gitlab.web:8443"},
+		{"ssh port does not select https port", "ssh://git@gitlab.web:2200/group/repo.git", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, ok := p.ParseRepository(tc.remote)
+			if tc.wantHost == "" {
+				if ok {
+					t.Fatalf("ParseRepository(%q) = %+v, want rejection (gitlab.web is only allowlisted as :8443)", tc.remote, repo)
+				}
+				return
+			}
+			if !ok {
+				t.Fatalf("ParseRepository(%q) = false, want true", tc.remote)
+			}
+			if repo.Host != tc.wantHost || repo.Repo != "group/repo" {
+				t.Errorf("ParseRepository(%q) = %+v, want host %q repo group/repo", tc.remote, repo, tc.wantHost)
+			}
+		})
+	}
+}
 
-	httpsRemote := "https://gitlab.internal:8443/group/repo.git"
-	sshRemote := "ssh://git@gitlab.internal:8443/group/repo.git"
+// TestHostBaseURLOverrideDrivesRESTBase verifies the optional per-host web base
+// override (non-standard port and/or subpath) and that the default stays
+// https://<host>/api/v4, independent of any SSH port.
+func TestHostBaseURLOverrideDrivesRESTBase(t *testing.T) {
+	for _, tc := range []struct {
+		name, host, override, want string
+	}{
+		{"default", "gitlab.internal", "", "https://gitlab.internal/api/v4"},
+		{"https port host", "gitlab.internal:8443", "", "https://gitlab.internal:8443/api/v4"},
+		{"port override", "gitlab.internal", "https://gitlab.internal:8443", "https://gitlab.internal:8443/api/v4"},
+		{"subpath override", "gitlab.internal", "https://corp.example/gitlab/", "https://corp.example/gitlab/api/v4"},
+		{"http override", "gitlab.internal", "http://gitlab.internal:8080", "http://gitlab.internal:8080/api/v4"},
+	} {
+		if got := RESTBaseForHost(tc.host, tc.override); got != tc.want {
+			t.Errorf("%s: RESTBaseForHost(%q, %q) = %q, want %q", tc.name, tc.host, tc.override, got, tc.want)
+		}
+	}
 
-	httpsRepo, httpsOK := p.ParseRepository(httpsRemote)
-	sshRepo, sshOK := p.ParseRepository(sshRemote)
-
-	if !httpsOK {
-		t.Fatalf("ParseRepository(%q) = false, want true (allowlisted host)", httpsRemote)
+	p, err := NewProvider(ProviderOptions{
+		Token:              StaticTokenSource("tok"),
+		SkipTokenPreflight: true,
+		AllowedHosts:       []string{"Gitlab.Internal", "plain.internal"},
+		HostBaseURLs:       map[string]string{"gitlab.internal": "https://corp.example/gitlab"},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !sshOK {
-		t.Fatalf("ParseRepository(%q) = false, want true (ssh:// must parse for allowlisted host)", sshRemote)
+	if got := p.clientForHost("gitlab.internal").restBase; got != "https://corp.example/gitlab/api/v4" {
+		t.Errorf("override client restBase = %q", got)
 	}
-	if httpsRepo.Host != customPortHost {
-		t.Errorf("HTTPS parse Host = %q, want %q", httpsRepo.Host, customPortHost)
-	}
-	if sshRepo.Host != customPortHost {
-		t.Errorf("SSH parse Host = %q, want %q (ssh:// must produce same host:port as https://)", sshRepo.Host, customPortHost)
-	}
-	if sshRepo.Owner != httpsRepo.Owner || sshRepo.Name != httpsRepo.Name || sshRepo.Repo != httpsRepo.Repo {
-		t.Errorf("SSH parse = %+v, HTTPS parse = %+v; want identical owner/name/repo", sshRepo, httpsRepo)
+	if got := p.clientForHost("plain.internal").restBase; got != "https://plain.internal/api/v4" {
+		t.Errorf("non-overridden client restBase = %q", got)
 	}
 }
 
@@ -339,4 +377,58 @@ func (t *hostRoutingTransport) RoundTrip(req *http.Request) (*http.Response, err
 	u.RawQuery = req2.URL.RawQuery
 	req2.URL = u
 	return http.DefaultTransport.RoundTrip(req2)
+}
+
+// TestSSHPortOriginResolvesMRsOnWebAuthority is the end-to-end regression for
+// remotes whose SSH and HTTPS ports differ (ssh://...:2200, web on 443): the MR
+// listing must hit https://<host>/api/v4, never <host>:2200, and a configured
+// base URL override must redirect it to the non-standard web port.
+func TestSSHPortOriginResolvesMRsOnWebAuthority(t *testing.T) {
+	const origin = "ssh://git@gitlab.icareweb.com:2200/group/repo.git"
+	for _, tc := range []struct {
+		name         string
+		baseURLs     map[string]string
+		wantAuthUsed string // req.URL.Host the provider dialed
+	}{
+		{"default web authority", nil, "gitlab.icareweb.com"},
+		{"override web port", map[string]string{"gitlab.icareweb.com": "https://gitlab.icareweb.com:8443"}, "gitlab.icareweb.com:8443"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var seenPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				seenPath = r.URL.Path
+				json.NewEncoder(w).Encode([]any{})
+			}))
+			t.Cleanup(srv.Close)
+
+			p, err := NewProvider(ProviderOptions{
+				Token:              StaticTokenSource("tok"),
+				SkipTokenPreflight: true,
+				AllowedHosts:       []string{"gitlab.icareweb.com"},
+				HostBaseURLs:       tc.baseURLs,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Only the expected authority is routable; any other (e.g. :2200)
+			// falls through to the real network and fails the call.
+			p.hostClientCfg.HTTPClient = &http.Client{Transport: &hostRoutingTransport{
+				routes: map[string]string{tc.wantAuthUsed: srv.URL},
+			}}
+
+			repo, ok := p.ParseRepository(origin)
+			if !ok {
+				t.Fatalf("ParseRepository(%q) = false", origin)
+			}
+			if repo.Host != "gitlab.icareweb.com" || repo.Repo != "group/repo" {
+				t.Fatalf("repo = %+v, want host gitlab.icareweb.com without the SSH port", repo)
+			}
+			if _, err := p.ListPRsByRepo(context.Background(), repo, time.Time{}); err != nil {
+				t.Fatalf("ListPRsByRepo: %v", err)
+			}
+			if !strings.HasPrefix(seenPath, "/api/v4/projects/group/repo/merge_requests") {
+				t.Errorf("request path = %q, want the group/repo merge_requests endpoint", seenPath)
+			}
+		})
+	}
 }

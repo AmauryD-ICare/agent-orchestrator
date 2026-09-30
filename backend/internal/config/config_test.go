@@ -342,7 +342,7 @@ func TestLoadOfferingInvalid(t *testing.T) {
 
 func TestLoadGitLabDefaults(t *testing.T) {
 	// Clear the GitLab config vars so we observe pure defaults.
-	for _, k := range []string{"AO_GITLAB_ALLOWED_HOSTS", "AO_GITLAB_HOST_TOKENS"} {
+	for _, k := range []string{"AO_GITLAB_ALLOWED_HOSTS", "AO_GITLAB_HOST_TOKENS", "AO_GITLAB_HOST_BASE_URLS"} {
 		t.Setenv(k, "")
 	}
 	cfg, err := Load()
@@ -524,5 +524,46 @@ func TestLoadTrackerIntakeRejectsGarbage(t *testing.T) {
 	t.Setenv("AO_TRACKER_INTAKE", "maybe")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() = nil error, want error for malformed AO_TRACKER_INTAKE")
+	}
+}
+
+func TestLoadGitLabHostBaseURLs(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		want    map[string]string
+		wantErr bool
+	}{
+		{"port", "gitlab.internal=https://gitlab.internal:8443", map[string]string{"gitlab.internal": "https://gitlab.internal:8443"}, false},
+		{"subpath and trailing slash trimmed", "gitlab.internal = https://corp.example/gitlab/ ", map[string]string{"gitlab.internal": "https://corp.example/gitlab"}, false},
+		{"http", "gitlab.internal=http://gitlab.internal:8080", map[string]string{"gitlab.internal": "http://gitlab.internal:8080"}, false},
+		{"multiple", "a.example=https://a.example:1,b.example=https://b.example/x", map[string]string{"a.example": "https://a.example:1", "b.example": "https://b.example/x"}, false},
+		{"bad scheme", "gitlab.internal=ftp://gitlab.internal", nil, true},
+		{"bare host", "gitlab.internal=gitlab.internal:8443", nil, true},
+		{"credentials", "gitlab.internal=https://u:p@gitlab.internal", nil, true},
+		{"query", "gitlab.internal=https://gitlab.internal/?x", nil, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AO_GITLAB_HOST_BASE_URLS", tc.env)
+			cfg, err := Load()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("Load succeeded, HostBaseURLs = %v; want error", cfg.GitLab.HostBaseURLs)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if len(cfg.GitLab.HostBaseURLs) != len(tc.want) {
+				t.Fatalf("HostBaseURLs = %v, want %v", cfg.GitLab.HostBaseURLs, tc.want)
+			}
+			for k, v := range tc.want {
+				if cfg.GitLab.HostBaseURLs[k] != v {
+					t.Errorf("HostBaseURLs[%q] = %q, want %q", k, cfg.GitLab.HostBaseURLs[k], v)
+				}
+			}
+		})
 	}
 }

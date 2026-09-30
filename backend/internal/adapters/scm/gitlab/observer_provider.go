@@ -40,12 +40,14 @@ const (
 // Supported remote formats:
 //
 //   - SSH:   git@gitlab.com:owner/repo.git
-//   - SSH:   ssh://git@gitlab.internal:8443/group/repo.git  (port preserved)
+//   - SSH:   ssh://git@gitlab.internal:2200/group/repo.git  (SSH port dropped)
 //   - HTTPS: https://gitlab.com/owner/repo.git
 //   - HTTPS: https://gitlab.internal:8443/group/repo.git      (port preserved)
 //
-// ssh:// remotes parse to the same host:port as their https:// equivalents
-// (review S1).
+// An ssh:// port is transport-only (where sshd listens) and never part of the
+// web/API authority, so ssh://git@host:2200/g/r.git parses to Host "host" — the
+// same repo as https://host/g/r.git. An https:// port is the web port and is
+// preserved.
 func (p *Provider) ParseRepository(remote string) (ports.SCMRepo, bool) {
 	return p.parseGitLabRepo(remote)
 }
@@ -56,14 +58,14 @@ func (p *Provider) parseGitLabRepo(remote string) (ports.SCMRepo, bool) {
 		return ports.SCMRepo{}, false
 	}
 
-	// ssh://git@host[:port]/owner/repo.git — the host:port is extracted from
-	// the URL's Host field so it matches the https:// form exactly.
+	// ssh://git@host[:port]/owner/repo.git — only the hostname is the web
+	// authority; the SSH port is transport and is dropped.
 	if strings.HasPrefix(remote, "ssh://") {
 		u, err := url.Parse(remote)
 		if err != nil || u.Host == "" {
 			return ports.SCMRepo{}, false
 		}
-		host := u.Host // includes port if present, e.g. "gitlab.internal:8443"
+		host := u.Hostname()
 		if !p.isHostAllowed(host) {
 			return ports.SCMRepo{}, false
 		}

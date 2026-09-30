@@ -385,7 +385,7 @@ func repoHostFromOrigin(remote string, provider domain.TrackerProvider) string {
 }
 
 // hostFromRemote extracts the hostname (with port) from a git remote URL,
-// supporting both HTTPS and SSH scp-like forms.
+// supporting HTTPS and SSH forms. An ssh:// port is dropped.
 func hostFromRemote(remote string) string {
 	remote = strings.TrimSpace(remote)
 	if remote == "" {
@@ -399,6 +399,9 @@ func hostFromRemote(remote string) string {
 		return ""
 	}
 	if u, err := url.Parse(remote); err == nil && u.Host != "" {
+		if u.Scheme == "ssh" {
+			return u.Hostname() // ssh port is transport, not the web authority
+		}
 		return u.Host // includes port if present
 	}
 	return ""

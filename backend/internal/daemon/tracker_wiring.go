@@ -82,6 +82,7 @@ func newGitLabTracker(gitlabCfg config.GitLabConfig) (ports.Tracker, error) {
 		Token:        trackergitlab.DefaultTokenSource(),
 		AllowedHosts: gitlabCfg.AllowedHosts,
 		HostTokens:   hostTokens,
+		HostBaseURLs: gitlabCfg.HostBaseURLs,
 	})
 }
 

@@ -28,11 +28,11 @@ func TestClaimPRWorkspaceRepositories(t *testing.T) {
 		}{
 			{"first child", "https://github.com/acme/api/pull/7", "acme/api", nil},
 			{"second child", "https://github.com/acme/web/pull/7", "acme/web", nil},
-			{"nested GitLab child", "https://gitlab.example.com:8443/group/sub/api/-/merge_requests/7", "group/sub/api", nil},
+			{"nested GitLab child", "https://gitlab.example.com/group/sub/api/-/merge_requests/7", "group/sub/api", nil},
 			{"unregistered repo", "https://github.com/other/api/pull/7", "", ErrProjectMismatch},
 			{"different host", "https://gitlab.other.com:8443/group/sub/api/-/merge_requests/7", "", ErrProjectMismatch},
-			{"different port", "https://gitlab.example.com/group/sub/api/-/merge_requests/7", "", ErrProjectMismatch},
-			{"different namespace", "https://gitlab.example.com:8443/other/sub/api/-/merge_requests/7", "", ErrProjectMismatch},
+			{"ssh port is not the web port", "https://gitlab.example.com:8443/group/sub/api/-/merge_requests/7", "", ErrProjectMismatch},
+			{"different namespace", "https://gitlab.example.com/other/sub/api/-/merge_requests/7", "", ErrProjectMismatch},
 			{"different provider", "https://gitlab.com/acme/api/-/merge_requests/7", "", ErrProjectMismatch},
 			{"invalid PR URL", "https://github.com/acme/api/-/merge_requests/7", "", ErrInvalidPRRef},
 		} {

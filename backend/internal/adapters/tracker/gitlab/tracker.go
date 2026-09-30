@@ -68,6 +68,9 @@ type Options struct {
 	UserAgent    string
 	AllowedHosts []string
 	HostTokens   map[string]scmgitlab.TokenSource
+	// HostBaseURLs maps an allowlisted host to its web base URL when the API
+	// is not served at https://<host> (non-standard port, subpath, http).
+	HostBaseURLs map[string]string
 }
 
 // hostEntry holds the per-host base URL and token source. The default
@@ -127,6 +130,7 @@ func New(opts Options) (*Tracker, error) {
 	}
 
 	// Build per-host config for self-managed hosts.
+	hostBases := scmgitlab.NormalizeHostBaseURLs(opts.HostBaseURLs)
 	hosts := make(map[string]hostEntry, len(opts.AllowedHosts))
 	for _, raw := range opts.AllowedHosts {
 		h := scmgitlab.NormalizeHost(raw)
@@ -134,7 +138,7 @@ func New(opts Options) (*Tracker, error) {
 			continue
 		}
 		he := hostEntry{
-			baseURL: "https://" + h + "/api/v4",
+			baseURL: scmgitlab.RESTBaseForHost(h, hostBases[h]),
 			tokens:  src, // fall back to default token
 		}
 		if ts, ok := opts.HostTokens[h]; ok && ts != nil {

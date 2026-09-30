@@ -37,6 +37,11 @@ type ProviderOptions struct {
 	// selection ensures the gitlab.com token is not attached to a self-managed
 	// host and vice versa.
 	HostTokens map[string]TokenSource
+
+	// HostBaseURLs maps an allowlisted self-managed host to its web base URL
+	// (e.g. "https://gitlab.internal:8443/gitlab") when the API is not served
+	// at https://<host>. The REST base becomes "<base>/api/v4".
+	HostBaseURLs map[string]string
 }
 
 // Provider implements the provider-neutral scm.Provider interface for GitLab.
@@ -60,6 +65,9 @@ type Provider struct {
 	// hostTokens maps a self-managed host to its TokenSource. Hosts in
 	// allowedHosts without an entry fall back to the default token (opts.Token).
 	hostTokens map[string]TokenSource
+
+	// hostBaseURLs holds optional per-host web base URL overrides.
+	hostBaseURLs map[string]string
 
 	// Per-host clients for self-managed GitLab instances. Lazily populated.
 	hostClients   map[string]*Client
@@ -125,6 +133,7 @@ func NewProvider(opts ProviderOptions) (*Provider, error) {
 		logger:       logger,
 		allowedHosts: allowed,
 		hostTokens:   hostTokens,
+		hostBaseURLs: NormalizeHostBaseURLs(opts.HostBaseURLs),
 		hostClientCfg: ClientOptions{
 			HTTPClient: opts.HTTPClient,
 			Token:      opts.Token,
@@ -187,9 +196,10 @@ func (p *Provider) clientForHost(host string) *Client {
 	}
 
 	cfg := p.hostClientCfg
-	// Derive the REST base from the host, preserving any port (e.g.
-	// "gitlab.internal:8443" → "https://gitlab.internal:8443/api/v4").
-	cfg.RESTBase = "https://" + h + "/api/v4"
+	// Derive the REST base from the host (a port here is an HTTPS port, e.g.
+	// "gitlab.internal:8443" → "https://gitlab.internal:8443/api/v4") unless a
+	// per-host web base URL override is configured.
+	cfg.RESTBase = RESTBaseForHost(h, p.hostBaseURLs[h])
 	// Select the per-host token if one is configured; otherwise the default
 	// token (cfg.Token) applies.
 	if src, ok := p.hostTokens[h]; ok {

@@ -67,6 +67,7 @@ func newGitLabSCMProvider(gitlabCfg config.GitLabConfig, logger *slog.Logger) (*
 		Logger:             logger,
 		AllowedHosts:       gitlabCfg.AllowedHosts,
 		HostTokens:         hostTokens,
+		HostBaseURLs:       gitlabCfg.HostBaseURLs,
 	})
 }
 
