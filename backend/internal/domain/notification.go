@@ -21,13 +21,16 @@ const (
 	NotificationReviewCompleted NotificationType = "review_completed"
 	// NotificationReviewChangesRequested means an AO reviewer found changes to make.
 	NotificationReviewChangesRequested NotificationType = "review_changes_requested"
+	// NotificationOrchestratorAwaitingUser means an orchestrator session
+	// finished a turn and is idle, waiting on the user's next instruction.
+	NotificationOrchestratorAwaitingUser NotificationType = "orchestrator_awaiting_user"
 )
 
 // Valid reports whether t is one of the v1 notification kinds.
 func (t NotificationType) Valid() bool {
 	switch t {
 	case NotificationNeedsInput, NotificationReadyToMerge, NotificationPRMerged, NotificationPRClosedUnmerged,
-		NotificationReviewCompleted, NotificationReviewChangesRequested:
+		NotificationReviewCompleted, NotificationReviewChangesRequested, NotificationOrchestratorAwaitingUser:
 		return true
 	default:
 		return false
@@ -35,11 +38,18 @@ func (t NotificationType) Valid() bool {
 }
 
 // NeedsResolution reports whether t describes an issue that stays open until
-// something changes (an agent waiting on the user, a PR waiting on a merge).
+// something changes (an agent waiting on the user, an orchestrator idle after a
+// turn, a PR waiting on a merge).
 // Terminal facts — a PR that merged or closed — describe something that already
 // happened, so they are surfaced once as unseen and never held as unresolved.
 func (t NotificationType) NeedsResolution() bool {
-	return t == NotificationNeedsInput || t == NotificationReadyToMerge
+	return t == NotificationNeedsInput || t == NotificationReadyToMerge || t == NotificationOrchestratorAwaitingUser
+}
+
+// IsSessionScoped reports whether t describes a session's own state rather
+// than a pull request, so it carries no PR URL.
+func (t NotificationType) IsSessionScoped() bool {
+	return t == NotificationNeedsInput || t == NotificationOrchestratorAwaitingUser
 }
 
 // NotificationStatus is the seen state for a stored notification. The stored

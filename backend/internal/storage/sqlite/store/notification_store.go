@@ -250,6 +250,14 @@ func (s *Store) ReconcileResolvedNotifications(ctx context.Context, at time.Time
 			return fmt.Errorf("delete dismissed needs-input notifications: %w", err)
 		}
 		resolved = notificationsFromGen(needsInput)
+		awaiting, err := q.ResolveStaleOrchestratorAwaitingUserNotifications(ctx, nullTime(at))
+		if err != nil {
+			return fmt.Errorf("reconcile orchestrator-awaiting-user notifications: %w", err)
+		}
+		if _, err := q.DeleteStaleDismissedOrchestratorAwaitingUserNotifications(ctx); err != nil {
+			return fmt.Errorf("delete dismissed orchestrator-awaiting-user notifications: %w", err)
+		}
+		resolved = append(resolved, notificationsFromGen(awaiting)...)
 		for _, prURL := range stalePRs {
 			rows, err := q.ResolvePRNotificationsByType(ctx, gen.ResolvePRNotificationsByTypeParams{
 				ResolvedAt: nullTime(at),

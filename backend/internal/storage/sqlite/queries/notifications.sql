@@ -28,7 +28,7 @@ SELECT *
 FROM notifications
 WHERE resolved_at IS NULL
   AND dismissed_at IS NULL
-  AND type IN ('needs_input', 'ready_to_merge')
+  AND type IN ('needs_input', 'ready_to_merge', 'orchestrator_awaiting_user')
   AND (
     CAST(sqlc.arg(before_id) AS TEXT) = ''
     OR created_at < sqlc.arg(before_created_at)
@@ -60,7 +60,7 @@ SELECT COUNT(*)
 FROM notifications
 WHERE resolved_at IS NULL
   AND dismissed_at IS NULL
-  AND type IN ('needs_input', 'ready_to_merge');
+  AND type IN ('needs_input', 'ready_to_merge', 'orchestrator_awaiting_user');
 
 -- name: MarkNotificationRead :one
 UPDATE notifications
@@ -145,6 +145,33 @@ WHERE type = 'needs_input'
     SELECT id FROM sessions
     WHERE is_terminated = TRUE
        OR activity_state NOT IN ('waiting_input', 'blocked')
+  );
+
+-- An orchestrator waits on the user only while it sits idle after a turn. Any
+-- other durable state means the user (or the session ending) already moved it
+-- on while the daemon was down.
+-- name: ResolveStaleOrchestratorAwaitingUserNotifications :many
+UPDATE notifications
+SET resolved_at = sqlc.arg(resolved_at)
+WHERE type = 'orchestrator_awaiting_user'
+  AND resolved_at IS NULL
+  AND dismissed_at IS NULL
+  AND session_id IN (
+    SELECT id FROM sessions
+    WHERE is_terminated = TRUE
+       OR activity_state <> 'idle'
+  )
+RETURNING *;
+
+-- name: DeleteStaleDismissedOrchestratorAwaitingUserNotifications :execrows
+DELETE FROM notifications
+WHERE type = 'orchestrator_awaiting_user'
+  AND resolved_at IS NULL
+  AND dismissed_at IS NOT NULL
+  AND session_id IN (
+    SELECT id FROM sessions
+    WHERE is_terminated = TRUE
+       OR activity_state <> 'idle'
   );
 
 -- name: GetOpenNotificationByDedupe :one

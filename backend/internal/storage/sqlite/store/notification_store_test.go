@@ -681,3 +681,51 @@ func TestNotificationStore_MarkNotificationsReadOnlyTouchesGivenIDs(t *testing.T
 		t.Fatalf("unread count = %d err=%v, want 1 (ntf_3 must stay reachable)", count, err)
 	}
 }
+
+// An orchestrator is waiting on the user only while it sits idle after a turn.
+// The type must pass the schema CHECK, count as unresolved, and survive restart
+// reconciliation exactly while its session is still idle.
+func TestNotificationStore_OrchestratorAwaitingUserLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "mer")
+	idleRec := sampleRecord("mer")
+	idleRec.Activity.State = domain.ActivityIdle
+	idle, err := s.CreateSession(ctx, idleRec)
+	if err != nil {
+		t.Fatalf("create idle session: %v", err)
+	}
+	busy, err := s.CreateSession(ctx, sampleRecord("mer"))
+	if err != nil {
+		t.Fatalf("create active session: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	for id, sess := range map[string]domain.SessionRecord{"ntf_idle": idle, "ntf_busy": busy} {
+		rec := domain.NotificationRecord{
+			ID: id, SessionID: sess.ID, ProjectID: sess.ProjectID,
+			Type: domain.NotificationOrchestratorAwaitingUser, Title: id,
+			Status: domain.NotificationUnread, CreatedAt: now,
+		}
+		if _, inserted, err := s.CreateNotification(ctx, rec); err != nil || !inserted {
+			t.Fatalf("CreateNotification %s inserted=%v err=%v", id, inserted, err)
+		}
+	}
+	if count, err := s.CountUnresolvedNotifications(ctx); err != nil || count != 2 {
+		t.Fatalf("CountUnresolvedNotifications = %d err=%v, want 2", count, err)
+	}
+
+	resolved, err := s.ReconcileResolvedNotifications(ctx, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ReconcileResolvedNotifications: %v", err)
+	}
+	if len(resolved) != 1 || resolved[0].ID != "ntf_busy" {
+		t.Fatalf("resolved = %+v, want only the no-longer-idle session's row", resolved)
+	}
+	rows, err := s.ListNotifications(ctx, domain.NotificationListUnresolved, time.Time{}, "", 10)
+	if err != nil {
+		t.Fatalf("ListNotifications: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != "ntf_idle" {
+		t.Fatalf("unresolved = %+v, want ntf_idle", rows)
+	}
+}
