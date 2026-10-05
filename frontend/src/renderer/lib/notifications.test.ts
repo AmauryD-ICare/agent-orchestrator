@@ -841,6 +841,19 @@ describe("createNotificationsTransport", () => {
 		expect(showNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ watched: true }));
 	});
 
+	it("marks the orchestrator_awaiting_user notification watched for the orchestrator on screen", () => {
+		setWindowState({ focused: true, visible: true });
+		createNotificationsTransport(queryClient(), () => "mer-1").connect();
+
+		EventSourceStub.instances[0].dispatch(
+			"notification_created",
+			notification({ type: "orchestrator_awaiting_user" }),
+		);
+
+		expect(showNotificationMock).toHaveBeenCalledTimes(1);
+		expect(showNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ watched: true }));
+	});
+
 	it.each([
 		{
 			activeSessionId: "other-session",

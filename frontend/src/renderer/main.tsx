@@ -44,9 +44,15 @@ if (import.meta.env.DEV) {
 		ready_to_merge: "Ready to merge",
 		pr_merged: "PR merged",
 		pr_closed_unmerged: "PR closed",
+		orchestrator_awaiting_user: "Orchestrator is waiting on you",
 	};
 	w.__testNotif = async (
-		type: "needs_input" | "ready_to_merge" | "pr_merged" | "pr_closed_unmerged" = "needs_input",
+		type:
+			| "needs_input"
+			| "ready_to_merge"
+			| "pr_merged"
+			| "pr_closed_unmerged"
+			| "orchestrator_awaiting_user" = "needs_input",
 	) => {
 		const key = unreadNotificationsQueryKey;
 		const id = `test-${Date.now()}`;

@@ -16,6 +16,7 @@ import {
 	LoaderCircle,
 	MessageSquareDiff,
 	MessageSquareDot,
+	MessageSquareReply,
 	RotateCcw,
 	X,
 } from "lucide-react";
@@ -1313,6 +1314,8 @@ function notificationIcon(type: string) {
 			return MessageSquareDot;
 		case "review_feedback":
 			return MessageSquareDiff;
+		case "orchestrator_awaiting_user":
+			return MessageSquareReply;
 		case "ready_to_merge":
 			return GitPullRequestArrow;
 		case "agent_failed":
@@ -1337,6 +1340,7 @@ function notificationIconClass(type: string): string {
 	switch (type) {
 		case "needs_input":
 		case "review_feedback":
+		case "orchestrator_awaiting_user":
 			return "text-warning";
 		case "agent_failed":
 			return "text-error";

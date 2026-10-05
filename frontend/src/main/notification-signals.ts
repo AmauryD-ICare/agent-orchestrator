@@ -9,17 +9,27 @@
  */
 
 /** The notification types defined by `backend/internal/domain/notification.go`. */
-export type NotificationType = "needs_input" | "ready_to_merge" | "pr_merged" | "pr_closed_unmerged";
+export type NotificationType =
+	| "needs_input"
+	| "ready_to_merge"
+	| "pr_merged"
+	| "pr_closed_unmerged"
+	| "orchestrator_awaiting_user";
 
 /**
  * Whether to fire the Windows/Linux taskbar flash. Restricted to the
  * actionable types: a merged or closed PR is worth a toast, but should not
- * demand attention as insistently as an agent blocked waiting on the user.
+ * demand attention as insistently as an agent blocked waiting on the user. An
+ * orchestrator that finished its turn is waiting on the user too.
  *
  * The macOS dock bounce is deliberately NOT gated by this allowlist — every
  * notification bounces there, with urgency carried by {@link dockBounceType}.
  */
-const ATTENTION_TYPES: ReadonlySet<string> = new Set<NotificationType>(["needs_input", "ready_to_merge"]);
+const ATTENTION_TYPES: ReadonlySet<string> = new Set<NotificationType>([
+	"needs_input",
+	"ready_to_merge",
+	"orchestrator_awaiting_user",
+]);
 
 /** Whether this notification type should flash the Windows/Linux taskbar. */
 export function shouldSignalAttention(type: string | undefined): boolean {

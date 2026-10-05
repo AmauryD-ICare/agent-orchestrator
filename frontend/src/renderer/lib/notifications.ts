@@ -21,12 +21,18 @@ const EVENTSOURCE_CLOSED = 2;
 const MAX_CONFIRMED_NOTIFICATION_DELETIONS = 256;
 
 /**
- * Only these two kinds describe something still waiting on the user.
+ * Only these kinds describe something still waiting on the user.
  * `pr_merged` / `pr_closed_unmerged` report something that already happened.
  * Mirrors NotificationType.NeedsResolution on the backend — used here only to
  * keep `unresolvedCount` accurate on the unread/all caches.
  */
-const UNRESOLVABLE_TYPES = new Set(["needs_input", "ready_to_merge"]);
+const UNRESOLVABLE_TYPES = new Set(["needs_input", "ready_to_merge", "orchestrator_awaiting_user"]);
+
+/**
+ * Session-scoped kinds whose prompt is the agent's own pane: an agent asking
+ * for input, or an orchestrator that finished its turn and awaits the user.
+ */
+const SESSION_PROMPT_TYPES = new Set(["needs_input", "orchestrator_awaiting_user"]);
 
 type NotificationsQueryKey = typeof unreadNotificationsQueryKey | typeof recentNotificationsQueryKey;
 
@@ -473,7 +479,8 @@ export function keepLatestNotificationsPage(
 }
 
 /**
- * Whether the user can already see a `needs_input` prompt. Main still plays
+ * Whether the user can already see a `needs_input` or
+ * `orchestrator_awaiting_user` prompt. Main still plays
  * the sound for it (an agent asking is worth hearing even mid-glance) but
  * skips the toast, which would only repeat what is on screen.
  *
@@ -487,15 +494,15 @@ export function keepLatestNotificationsPage(
  * reviewer tab hides the agent while the URL still names that session. The
  * caller resolves that, passing the session only while its agent pane shows.
  *
- * Only `needs_input` counts. PR outcomes (`ready_to_merge`, `pr_merged`,
+ * Only those session prompts count. PR outcomes (`ready_to_merge`, `pr_merged`,
  * `pr_closed_unmerged`) are not visible in the terminal pane, so they still
  * deserve a toast even for the session in the foreground.
  */
-function isWatchingNeedsInputSession(
+function isWatchingSessionPrompt(
 	notification: NotificationDTO,
 	visibleAgentSessionId: string | undefined,
 ): boolean {
-	if (notification.type !== "needs_input") return false;
+	if (!SESSION_PROMPT_TYPES.has(notification.type)) return false;
 	if (!notification.sessionId || notification.sessionId !== visibleAgentSessionId) return false;
 	return document.visibilityState === "visible" && document.hasFocus();
 }
@@ -661,7 +668,7 @@ export function createNotificationsTransport(
 						receiveLiveNotificationEvent({
 							kind: "created",
 							notification,
-							watched: isWatchingNeedsInputSession(notification, getVisibleAgentSessionId()),
+							watched: isWatchingSessionPrompt(notification, getVisibleAgentSessionId()),
 						});
 					});
 					// AO closed the underlying issue (the session got its input, the

@@ -30,6 +30,7 @@ describe("shouldSignalAttention", () => {
 	it("flashes the taskbar for the actionable types", () => {
 		expect(shouldSignalAttention("needs_input")).toBe(true);
 		expect(shouldSignalAttention("ready_to_merge")).toBe(true);
+		expect(shouldSignalAttention("orchestrator_awaiting_user")).toBe(true);
 	});
 
 	it("does not flash the taskbar for informational PR outcomes", () => {
