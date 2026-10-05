@@ -103,7 +103,9 @@ surface (`npm run sqlc`, `npm run api`).
   their documented sandbox, environment-replacement, broker, and gateway
   prerequisites are implemented.
 - Durable dashboard notifications for `needs_input`, `ready_to_merge`,
-  `pr_merged`, and `pr_closed_unmerged`: backend enrichment/persistence,
+  `pr_merged`, `pr_closed_unmerged`, and `orchestrator_awaiting_user` (an
+  orchestrator finished a human-initiated turn and waits on the user; resolved
+  by the next human prompt or termination): backend enrichment/persistence,
   cursor-paginated read/unread history, live notification stream, and read
   acknowledgement API. The desktop presents one newest-first feed; opening it
   acknowledges loaded unread items. It has clear-one/clear-all controls, not
