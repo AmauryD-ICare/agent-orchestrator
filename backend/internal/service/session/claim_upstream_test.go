@@ -28,7 +28,8 @@ func TestClaimPRExplicitCanonicalRepository(t *testing.T) {
 	}{
 		{"authenticated checkout origin", "https://git-user:token@github.com/alice/repo.git", "https://github.com/acme/repo", "7", "acme/repo", "https://github.com/acme/repo/pull/7", nil},
 		{"gitlab custom port", "https://gitlab.example.com:8443/alice/repo", "https://gitlab.example.com:8443/group/sub/repo", "7", "group/sub/repo", "https://gitlab.example.com:8443/group/sub/repo/-/merge_requests/7", nil},
-		{"SSH custom port", "ssh://git@gitlab.example.com:8443/alice/repo.git", "", "7", "alice/repo", "https://gitlab.example.com:8443/alice/repo/-/merge_requests/7", nil},
+		{"SSH custom port", "ssh://git@gitlab.example.com:8443/alice/repo.git", "", "7", "alice/repo", "https://gitlab.example.com/alice/repo/-/merge_requests/7", nil},
+		{"SSH custom port upstream", "ssh://git@gitlab.example.com:2200/alice/repo.git", "https://gitlab.example.com/group/sub/repo", "7", "group/sub/repo", "https://gitlab.example.com/group/sub/repo/-/merge_requests/7", nil},
 		{"github upstream URL", "git@github.com:alice/repo.git", "https://github.com/acme/repo", "https://github.com/acme/repo/pull/7", "acme/repo", "https://github.com/acme/repo/pull/7", nil},
 		{"github upstream number", "https://github.com/alice/repo", "https://github.com/acme/repo", "7", "acme/repo", "https://github.com/acme/repo/pull/7", nil},
 		{"origin remains trusted", "https://github.com/alice/repo", "https://github.com/acme/repo", "https://github.com/alice/repo/pull/7", "alice/repo", "https://github.com/alice/repo/pull/7", nil},

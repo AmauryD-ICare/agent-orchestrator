@@ -41,7 +41,7 @@ func TestClaimPRWorkspaceRepositories(t *testing.T) {
 					{RepoOriginURL: ""}, {RepoOriginURL: "/local/repo"},
 					{RepoOriginURL: "git@github.com:Acme/API.git"},
 					{RepoOriginURL: "https://github.com/acme/web.git"},
-					{RepoOriginURL: "ssh://git@gitlab.example.com:8443/group/sub/api.git"},
+					{RepoOriginURL: "https://gitlab.example.com:8443/group/sub/api.git"},
 				}}
 				st.projects["ws"] = domain.ProjectRecord{ID: "ws", Kind: domain.ProjectKindWorkspace, RepoOriginURL: root}
 				st.sessions["ws-1"] = domain.SessionRecord{ID: "ws-1", ProjectID: "ws", Kind: domain.KindWorker, Metadata: domain.SessionMetadata{WorkspacePath: "/ws", Branch: "ao/ws-1-2"}}
