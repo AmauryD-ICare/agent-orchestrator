@@ -414,7 +414,9 @@ func (m *Manager) mutate(ctx context.Context, id domain.SessionID, fn func(domai
 	m.mu.Unlock()
 	// Notification side effects run outside the reducer lock, like the activity
 	// path does: a slow notification store must never stall lifecycle writes.
-	m.resolveNotifications(ctx, needsInputResolutions(rec, next, now)...)
+	resolutions := needsInputResolutions(rec, next, now)
+	resolutions = append(resolutions, orchestratorTerminatedResolutions(rec, next, now)...)
+	m.resolveNotifications(ctx, resolutions...)
 	return nil
 }
 
@@ -430,6 +432,60 @@ func needsInputResolutions(prev, next domain.SessionRecord, now time.Time) []por
 	}
 	return []ports.NotificationResolution{{
 		Type:       domain.NotificationNeedsInput,
+		SessionID:  next.ID,
+		ResolvedAt: now,
+	}}
+}
+
+// orchestratorTurnEndIntent reports the notification raised when an
+// orchestrator finishes a turn and goes idle: it replied and now waits on the
+// user's next instruction. Workers are excluded — their idle is the
+// orchestrator's concern, not the user's. Turns AO itself started (report
+// batches, handoff requests) are excluded too: the hook client tags their
+// prompt as coordination and the checkpoint keeps that provenance until the
+// next human prompt, so their Stop is never mistaken for a reply to the user.
+func orchestratorTurnEndIntent(prev, next domain.SessionRecord) *ports.NotificationIntent {
+	if next.Kind != domain.KindOrchestrator || next.IsTerminated {
+		return nil
+	}
+	if prev.Activity.State != domain.ActivityActive || next.Activity.State != domain.ActivityIdle {
+		return nil
+	}
+	if next.Metadata.ConversationCheckpointState == domain.ConversationCheckpointCoordination {
+		return nil
+	}
+	return &ports.NotificationIntent{
+		Type:               domain.NotificationOrchestratorAwaitingUser,
+		SessionID:          next.ID,
+		ProjectID:          next.ProjectID,
+		CreatedAt:          next.Activity.LastActivityAt,
+		SessionDisplayName: next.DisplayName,
+	}
+}
+
+// orchestratorPromptResolutions reports the awaiting-user notification a human
+// prompt just answered. AO's own coordination prompts are not the user
+// answering, so they leave the notification open.
+func orchestratorPromptResolutions(rec domain.SessionRecord, s ports.ActivitySignal, now time.Time) []ports.NotificationResolution {
+	if rec.Kind != domain.KindOrchestrator || s.Event != "user-prompt-submit" ||
+		s.ConversationCheckpointOrigin == domain.ConversationCheckpointOriginCoordination {
+		return nil
+	}
+	return []ports.NotificationResolution{{
+		Type:       domain.NotificationOrchestratorAwaitingUser,
+		SessionID:  rec.ID,
+		ResolvedAt: now,
+	}}
+}
+
+// orchestratorTerminatedResolutions reports the awaiting-user notification a
+// session write made stale by ending the orchestrator.
+func orchestratorTerminatedResolutions(prev, next domain.SessionRecord, now time.Time) []ports.NotificationResolution {
+	if next.Kind != domain.KindOrchestrator || prev.IsTerminated || !next.IsTerminated {
+		return nil
+	}
+	return []ports.NotificationResolution{{
+		Type:       domain.NotificationOrchestratorAwaitingUser,
 		SessionID:  next.ID,
 		ResolvedAt: now,
 	}}
@@ -986,8 +1042,13 @@ retryProjection:
 				m.mu.Unlock()
 				return nil
 			}
+			resolutions := orchestratorPromptResolutions(rec, s, now)
 			m.mu.Unlock()
-			return m.acknowledgeAgentSwitchTarget(ctx, id, s, now)
+			if err := m.acknowledgeAgentSwitchTarget(ctx, id, s, now); err != nil {
+				return err
+			}
+			m.resolveNotifications(ctx, resolutions...)
+			return nil
 		}
 		m.mu.Unlock()
 		return nil
@@ -1031,7 +1092,11 @@ retryProjection:
 	}
 	// Leaving the needs-input family is the user answering: the notification
 	// that pinged them has nothing left to resolve.
+	if turnEnd := orchestratorTurnEndIntent(rec, next); turnEnd != nil {
+		intent = turnEnd
+	}
 	resolutions := needsInputResolutions(rec, next, now)
+	resolutions = append(resolutions, orchestratorPromptResolutions(next, s, now)...)
 	waitingEvents := m.waitingInputEvents(next, prevState, prevAt, now)
 	m.mu.Unlock()
 	if err := m.acknowledgeAgentSwitchTarget(ctx, id, s, now); err != nil {

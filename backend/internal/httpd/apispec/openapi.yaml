@@ -13014,6 +13014,7 @@ components:
           - pr_closed_unmerged
           - review_completed
           - review_changes_requested
+          - orchestrator_awaiting_user
           type: string
       required:
       - id
