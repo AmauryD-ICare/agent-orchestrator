@@ -121,34 +121,43 @@ func TestOrchestratorNonTurnIdleDoesNotEmitAwaitingUserNotification(t *testing.T
 	}
 }
 
-// A turn AO started (a report batch) is not the orchestrator answering the
-// user, and its prompt is not the user answering the orchestrator: it neither
-// pings nor clears an open ping.
-func TestOrchestratorCoordinationTurnNeitherNotifiesNorResolves(t *testing.T) {
+// A turn AO started (a report batch) still ends with the orchestrator waiting
+// on the user, so it notifies. Its prompt is not the user answering, so it
+// never resolves an open notification: that stays until a human prompt.
+func TestOrchestratorCoordinationTurnNotifiesWithoutResolving(t *testing.T) {
 	m, _, sink, _ := newAwaitingUserHarness(t, domain.KindOrchestrator, domain.ActivityIdle)
 
+	if err := m.ApplyActivitySignal(ctx, "orc-1", coordinationPrompt()); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitingUserResolutions(sink); len(got) != 0 {
+		t.Fatalf("coordination prompt resolved %+v", got)
+	}
+	if err := m.ApplyActivitySignal(ctx, "orc-1", turnStop()); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitingUserIntents(sink); len(got) != 1 {
+		t.Fatalf("coordination turn intents = %+v, want 1", got)
+	}
+
+	// Another automated delivery arrives before the user answers: the pending
+	// notification is not resolved, so the user still sees it.
 	if err := m.ApplyActivitySignal(ctx, "orc-1", coordinationPrompt()); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.ApplyActivitySignal(ctx, "orc-1", turnStop()); err != nil {
 		t.Fatal(err)
 	}
-	if got := awaitingUserIntents(sink); len(got) != 0 {
-		t.Fatalf("coordination turn emitted %+v", got)
-	}
 	if got := awaitingUserResolutions(sink); len(got) != 0 {
-		t.Fatalf("coordination prompt resolved %+v", got)
+		t.Fatalf("automated delivery resolved the pending notification: %+v", got)
 	}
 
-	// The next human turn is a reply to the user again.
+	// Only the human prompt resolves it.
 	if err := m.ApplyActivitySignal(ctx, "orc-1", humanPrompt()); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.ApplyActivitySignal(ctx, "orc-1", turnStop()); err != nil {
-		t.Fatal(err)
-	}
-	if got := awaitingUserIntents(sink); len(got) != 1 {
-		t.Fatalf("human turn after coordination: intents = %+v, want 1", got)
+	if got := awaitingUserResolutions(sink); len(got) != 1 {
+		t.Fatalf("human prompt resolutions = %+v, want 1", got)
 	}
 }
 

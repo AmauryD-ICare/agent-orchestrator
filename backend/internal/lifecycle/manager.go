@@ -441,17 +441,14 @@ func needsInputResolutions(prev, next domain.SessionRecord, now time.Time) []por
 // orchestrator finishes a turn and goes idle: it replied and now waits on the
 // user's next instruction. Workers are excluded — their idle is the
 // orchestrator's concern, not the user's. Turns AO itself started (report
-// batches, handoff requests) are excluded too: the hook client tags their
-// prompt as coordination and the checkpoint keeps that provenance until the
-// next human prompt, so their Stop is never mistaken for a reply to the user.
+// batches, automated deliveries) notify too: the orchestrator often answers
+// them with a question or a decision only the user can make. An open
+// notification dedupes repeat turn ends until the user answers.
 func orchestratorTurnEndIntent(prev, next domain.SessionRecord) *ports.NotificationIntent {
 	if next.Kind != domain.KindOrchestrator || next.IsTerminated {
 		return nil
 	}
 	if prev.Activity.State != domain.ActivityActive || next.Activity.State != domain.ActivityIdle {
-		return nil
-	}
-	if next.Metadata.ConversationCheckpointState == domain.ConversationCheckpointCoordination {
 		return nil
 	}
 	return &ports.NotificationIntent{
