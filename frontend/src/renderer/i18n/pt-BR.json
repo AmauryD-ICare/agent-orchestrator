@@ -1411,6 +1411,7 @@
 	"shell.openProjectOrchestrator": "Abrir orchestrator de {{name}}",
 	"shell.retryUpdateCheck": "Tentar novamente",
 	"shell.toggleProject": "Alternar sessões de {{name}}",
+	"shell.projectNeedsAttention": "Uma sessão em {{name}} precisa da sua resposta",
 	"shell.openSession": "Abrir {{title}}",
 	"shell.openOrchestrator": "Abrir orchestrator",
 	"shell.orchestrator": "Orchestrator",

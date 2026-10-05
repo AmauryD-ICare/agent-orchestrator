@@ -71,7 +71,7 @@ import {
 	STANDALONE_PROJECT_KIND,
 	STANDALONE_WORKSPACE_ID,
 } from "../types/workspace";
-import { getSessionStatusDotView } from "../lib/session-presentation";
+import { getAttentionZoneView, getSessionStatusDotView } from "../lib/session-presentation";
 import { deriveSessionAgentSwitchPresentation } from "../lib/agent-switch-presentation";
 import { aoBridge } from "../lib/bridge";
 import { hasTrustedApiBaseUrl } from "../lib/api-client";
@@ -79,6 +79,7 @@ import { useCommandPaletteEnabled } from "../hooks/useCommandPaletteEnabled";
 import { useCanResumeAgent } from "../hooks/useCanResumeAgent";
 import { cloudSessionsQueryKey, workspaceQueryKey, workspaceQueryKeyForHost } from "../hooks/useWorkspaceQuery";
 import { conversationQueryKey, conversationQueryOptions } from "../hooks/useConversation";
+import { useProjectsNeedingAttention } from "../hooks/useProjectsNeedingAttention";
 import { usePinSession, useUnpinSession } from "../hooks/usePinSession";
 import { spawnCloudOrchestrator } from "../lib/cloud-orchestrator";
 import { resumeOrchestrator, spawnOrchestrator } from "../lib/spawn-orchestrator";
@@ -568,6 +569,21 @@ function SessionStatusDot({ session }: { session: WorkspaceSession }) {
 	);
 }
 
+// A session in this project is waiting on the user (needs input, or an
+// orchestrator finished its turn). One tone for every session kind: it borrows
+// the needs-input session dot so the project row and its rows read alike. The
+// dot is decorative; the row announces the state through a screen-reader label.
+function ProjectAttentionDot({ label, className }: { label: string; className?: string }) {
+	return (
+		<span
+			aria-hidden="true"
+			className={cn("relative z-[1] size-2 shrink-0 rounded-full", getAttentionZoneView("needs_input").dotClassName, className)}
+			data-project-attention=""
+			title={label}
+		/>
+	);
+}
+
 export {
 	resolveNextNavigationAfterSessionKill,
 	type NextSessionNavigation,
@@ -689,6 +705,7 @@ export function Sidebar({
 		queryFn: () => aoBridge.app.getVersion(),
 		staleTime: Infinity,
 	});
+	const projectsNeedingAttention = useProjectsNeedingAttention();
 	const isNightly = typeof appVersion === "string" && appVersion.includes("-nightly.");
 
 	// agent-orchestrator's sidebar resize: drag the right edge (200-420px,
@@ -1083,6 +1100,7 @@ export function Sidebar({
 												<ProjectItem
 													key={workspace.id}
 													workspace={workspace}
+													needsAttention={projectsNeedingAttention.has(workspace.id)}
 													expanded={expandedIds.has(workspace.id) || (initialActiveSessionProjectId === workspace.id && !dismissedInitialActiveProjectIds.has(workspace.id))}
 													suppressInitialExpandAnimation={expandedIds.has(workspace.id)}
 													selection={selection}
@@ -1312,6 +1330,8 @@ type ProjectItemProps = {
 	workspace: WorkspaceSummary;
 	hostLabel?: string;
 	onOpenOrchestrator?: () => void;
+	/** A session in this project waits on the user (local daemon projects only). */
+	needsAttention?: boolean;
 	expanded: boolean;
 	selection: Selection;
 	isDragged: boolean;
@@ -1331,6 +1351,7 @@ const ProjectItem = memo(function ProjectItem({
 	workspace,
 	hostLabel,
 	onOpenOrchestrator,
+	needsAttention = false,
 	expanded,
 	selection,
 	isDragged,
@@ -1645,6 +1666,12 @@ const ProjectItem = memo(function ProjectItem({
 										className="relative z-[1] hidden size-8 items-center justify-center text-muted-foreground group-data-[collapsible=icon]:inline-flex"
 									>
 										{expanded ? <FolderOpen className="size-5" strokeWidth={1.75} /> : <Folder className="size-5" strokeWidth={1.75} />}
+										{needsAttention && (
+											<ProjectAttentionDot
+												className="absolute top-0.5 right-0.5 ring-2 ring-sidebar"
+												label={t("shell.projectNeedsAttention", { name: workspace.name })}
+											/>
+										)}
 									</span>
 									<span
 										className="sidebar-expanded-chrome relative z-[1] min-w-0 flex-1 translate-y-px truncate group-data-[collapsible=icon]:hidden"
@@ -1660,6 +1687,15 @@ const ProjectItem = memo(function ProjectItem({
 										>
 											{t("shell.cloudProjectBadge")}
 										</Badge>
+									)}
+									{needsAttention && (
+										<>
+											<ProjectAttentionDot
+												className="group-data-[collapsible=icon]:hidden"
+												label={t("shell.projectNeedsAttention", { name: workspace.name })}
+											/>
+											<span className="sr-only">{t("shell.projectNeedsAttention", { name: workspace.name })}</span>
+										</>
 									)}
 								</SidebarMenuButton>
 								{/* Folder disclosure toggle: sibling of the nav button, absolutely positioned over

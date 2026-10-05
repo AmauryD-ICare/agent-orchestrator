@@ -1373,6 +1373,7 @@
 	"shell.openProjectOrchestrator": "打开 {{name}} 编排器",
 	"shell.retryUpdateCheck": "重试检查更新",
 	"shell.toggleProject": "切换 {{name}} 会话",
+	"shell.projectNeedsAttention": "{{name}} 中有会话需要你的输入",
 	"shell.openSession": "打开{{title}}",
 	"shell.openOrchestrator": "打开编排器",
 	"shell.orchestrator": "编排器",

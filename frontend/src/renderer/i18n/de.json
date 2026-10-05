@@ -1389,6 +1389,7 @@
 	"shell.openProjectOrchestrator": "Orchestrator von {{name}} öffnen",
 	"shell.retryUpdateCheck": "Update-Prüfung wiederholen",
 	"shell.toggleProject": "Toggle {{name}}-Sitzungen",
+	"shell.projectNeedsAttention": "Eine Sitzung in {{name}} benötigt deine Eingabe",
 	"shell.openSession": "{{title}} öffnen",
 	"shell.openOrchestrator": "Orchestrator öffnen",
 	"shell.orchestrator": "Orchestrator",

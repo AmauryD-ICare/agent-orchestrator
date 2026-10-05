@@ -130,6 +130,10 @@ vi.mock("../hooks/useCloudLocalAuth", () => ({
 		},
 	}),
 }));
+const projectsNeedingAttention = vi.hoisted(() => ({ current: new Set<string>() as ReadonlySet<string> }));
+vi.mock("../hooks/useProjectsNeedingAttention", () => ({
+	useProjectsNeedingAttention: () => projectsNeedingAttention.current,
+}));
 vi.mock("../hooks/useCommandPaletteEnabled", () => ({
 	useCommandPaletteEnabled: () => commandPaletteEnabled.current,
 }));
@@ -461,6 +465,7 @@ beforeEach(() => {
 		provisioningProjectIds: new Set(),
 		restartingProjectIds: new Set(),
 	});
+	projectsNeedingAttention.current = new Set();
 	getMock.mockReset();
 	getMock.mockResolvedValue({
 		data: {
@@ -516,6 +521,38 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+});
+
+describe("Sidebar project attention dot", () => {
+	const otherWorkspace: WorkspaceSummary = { ...workspace, id: "proj-2", name: "Project Two", path: "/repo/project-two" };
+
+	it.each([
+		{ name: "expanded", initialOpen: true },
+		{ name: "icon-collapsed", initialOpen: false },
+	])("marks only projects with a session waiting on the user in the $name sidebar", ({ initialOpen }) => {
+		projectsNeedingAttention.current = new Set(["proj-1"]);
+		// Collapsed projects must still show the dot.
+		renderSidebar({ workspaces: [workspace, otherWorkspace], initialOpen, expandedProjectIds: [] });
+
+		const label = "A session in Project One needs your input";
+		expect(screen.getByText(label)).toHaveClass("sr-only");
+		const marked = document.querySelector('[data-project-drag-row][data-project-id="proj-1"]');
+		const unmarked = document.querySelector('[data-project-drag-row][data-project-id="proj-2"]');
+		const dots = marked?.querySelectorAll("[data-project-attention]") ?? [];
+		// One dot for the expanded row, one on the icon-rail folder.
+		expect(dots).toHaveLength(2);
+		for (const dot of dots) {
+			expect(dot).toHaveClass("bg-status-needs-you");
+			expect(dot).toHaveAttribute("title", label);
+		}
+		expect(unmarked?.querySelector("[data-project-attention]")).toBeNull();
+	});
+
+	it("shows no dot when no session is waiting on the user", () => {
+		renderSidebar();
+
+		expect(document.querySelector("[data-project-attention]")).toBeNull();
+	});
 });
 
 describe("Sidebar", () => {

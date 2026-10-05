@@ -1389,6 +1389,7 @@
 	"shell.openProjectOrchestrator": "{{name}} 오케스트레이터 열기",
 	"shell.retryUpdateCheck": "다시 확인",
 	"shell.toggleProject": "{{name}} 세션 전환",
+	"shell.projectNeedsAttention": "{{name}}의 세션이 입력을 기다리고 있습니다",
 	"shell.openSession": "{{title}} 열기",
 	"shell.openOrchestrator": "오케스트레이터 열기",
 	"shell.orchestrator": "오케스트레이터",

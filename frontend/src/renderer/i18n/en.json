@@ -1535,6 +1535,7 @@
 	"shell.openProjectOrchestrator": "Open {{name}} orchestrator",
 	"shell.retryUpdateCheck": "Retry update check",
 	"shell.toggleProject": "Toggle {{name}} sessions",
+	"shell.projectNeedsAttention": "A session in {{name}} needs your input",
 	"shell.openSession": "Open {{title}}",
 	"shell.openOrchestrator": "Open orchestrator",
 	"shell.orchestrator": "Orchestrator",

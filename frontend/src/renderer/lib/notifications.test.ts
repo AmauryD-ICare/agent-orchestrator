@@ -40,6 +40,9 @@ vi.mock("./bridge", () => ({
 import {
 	applyNotificationsCleared,
 	applyNotificationDeleted,
+	attentionNotificationsQueryKey,
+	fetchAttentionNotifications,
+	projectIdsNeedingAttention,
 	applyOptimisticNotificationDelete,
 	applyResolvedNotification,
 	clearAllNotifications,
@@ -550,6 +553,54 @@ describe("notification cache helpers", () => {
 	});
 });
 
+// The attention query is refetched on every live event; these reconciliation
+// tests count only the history-cache refreshes they are about.
+function historyInvalidations(spy: { mock: { calls: unknown[][] } }): unknown[][] {
+	return spy.mock.calls.filter(([filters]) => {
+		const key = (filters as { queryKey?: readonly unknown[] } | undefined)?.queryKey;
+		return key?.[1] === "history";
+	});
+}
+
+describe("project attention", () => {
+	it("loads unresolved session prompts and ignores PR notifications", async () => {
+		apiGetMock.mockResolvedValueOnce({
+			data: {
+				notifications: [
+					notification({ id: "input", type: "needs_input", projectId: "mer" }),
+					notification({ id: "turn", type: "orchestrator_awaiting_user", projectId: "web" }),
+					notification({ id: "ready", type: "ready_to_merge", projectId: "api", prUrl: "https://x/pull/1" }),
+				],
+				unreadCount: 0,
+				unresolvedCount: 3,
+			},
+			error: undefined,
+		});
+
+		const rows = await fetchAttentionNotifications();
+
+		expect(apiGetMock).toHaveBeenCalledWith(
+			"/api/v1/notifications",
+			expect.objectContaining({ params: { query: { status: "unresolved", limit: NOTIFICATION_PAGE_SIZE } } }),
+		);
+		expect(rows.map((row) => row.id)).toEqual(["input", "turn"]);
+		expect([...projectIdsNeedingAttention(rows)]).toEqual(["mer", "web"]);
+	});
+
+	it.each(["notification_created", "notification_resolved", "notification_deleted"])(
+		"refreshes the attention list on %s",
+		(eventName) => {
+			const qc = queryClient();
+			const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+			createNotificationsTransport(qc).connect();
+
+			EventSourceStub.instances[0].dispatch(eventName, notification());
+
+			expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: attentionNotificationsQueryKey });
+		},
+	);
+});
+
 describe("createNotificationsTransport", () => {
 	it("opens the notification stream and invalidates unread notifications on open", () => {
 		const qc = queryClient();
@@ -619,7 +670,7 @@ describe("createNotificationsTransport", () => {
 			notification({ id: "not-loaded", resolvedAt: "2026-06-16T11:00:00Z" }),
 		);
 
-		await vi.waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(historyInvalidations(invalidateSpy)).toHaveLength(2));
 	});
 
 	it("removes a deleted notification from every live cache", async () => {
@@ -666,7 +717,7 @@ describe("createNotificationsTransport", () => {
 				expect.objectContaining({ id: "after-clear" }),
 			]),
 		);
-		await vi.waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(4));
+		await vi.waitFor(() => expect(historyInvalidations(invalidateSpy)).toHaveLength(4));
 	});
 
 	it("buffers live creates while an explicit reconciliation refreshes snapshots", async () => {

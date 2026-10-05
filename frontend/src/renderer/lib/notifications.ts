@@ -14,6 +14,13 @@ export type NotificationClear = Pick<ClearNotificationsResult, "clearId" | "clea
 export const unreadNotificationsQueryKey = ["notifications", "history", "unread"] as const;
 export const recentNotificationsQueryKey = ["notifications", "history", "all"] as const;
 export const NOTIFICATION_PAGE_SIZE = 100;
+/**
+ * Unresolved session prompts (an agent asking for input, an orchestrator
+ * waiting after its turn). Kept apart from the unread/all history caches:
+ * seeing a notification marks it read, but the session still needs the user
+ * until AO resolves it.
+ */
+export const attentionNotificationsQueryKey = ["notifications", "attention"] as const;
 
 const EVENTSOURCE_CLOSED = 2;
 // HTTP responses and SSE deletes can arrive in either order. Keep recent
@@ -64,6 +71,23 @@ type NotificationDeletionState =
 	  }
 	| { kind: "confirmed" };
 const notificationDeletionStates = new WeakMap<QueryClient, Map<string, NotificationDeletionState>>();
+
+/** The unresolved session prompts that put a sidebar attention dot on a project. */
+export async function fetchAttentionNotifications(signal?: AbortSignal): Promise<NotificationDTO[]> {
+	const { data, error } = await apiClient.GET("/api/v1/notifications", {
+		signal,
+		params: { query: { status: "unresolved", limit: NOTIFICATION_PAGE_SIZE } },
+	});
+	if (error) throw new Error(apiErrorMessage(error, "Could not load notifications"));
+	return (data?.notifications ?? []).filter(
+		(notification) => SESSION_PROMPT_TYPES.has(notification.type) && !notification.resolvedAt,
+	);
+}
+
+/** Projects with at least one session waiting on the user. */
+export function projectIdsNeedingAttention(notifications: readonly NotificationDTO[]): ReadonlySet<string> {
+	return new Set(notifications.map((notification) => notification.projectId).filter(Boolean));
+}
 
 export function notificationsQueryKey(status: NotificationListStatus): NotificationsQueryKey {
 	return status === "unread" ? unreadNotificationsQueryKey : recentNotificationsQueryKey;
@@ -584,6 +608,9 @@ export function createNotificationsTransport(
 			};
 
 			const receiveLiveNotificationEvent = (event: LiveNotificationEvent) => {
+				// Every live change can open or close a session prompt; the attention
+				// list is small, so refetching it beats patching it.
+				void queryClient.invalidateQueries({ queryKey: attentionNotificationsQueryKey });
 				if (snapshotRefresh) {
 					snapshotRefresh.events.push(event);
 					// The snapshot may already contain a post-clear row whose create
@@ -625,6 +652,7 @@ export function createNotificationsTransport(
 				void Promise.all([
 					queryClient.invalidateQueries({ queryKey: unreadNotificationsQueryKey }),
 					queryClient.invalidateQueries({ queryKey: recentNotificationsQueryKey }),
+					queryClient.invalidateQueries({ queryKey: attentionNotificationsQueryKey }),
 				]).then(finish, finish);
 				return refresh.done;
 			};

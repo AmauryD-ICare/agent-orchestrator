@@ -1411,6 +1411,7 @@
 	"shell.openProjectOrchestrator": "Abrir orquestador de {{name}}",
 	"shell.retryUpdateCheck": "Reintentar la búsqueda",
 	"shell.toggleProject": "Alternar sesiones de {{name}}",
+	"shell.projectNeedsAttention": "Una sesión en {{name}} necesita tu respuesta",
 	"shell.openSession": "Abrir {{title}}",
 	"shell.openOrchestrator": "Abrir orquestador",
 	"shell.orchestrator": "Orquestador",

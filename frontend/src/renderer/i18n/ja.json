@@ -1389,6 +1389,7 @@
 	"shell.openProjectOrchestrator": "{{name}} のオーケストレーターを開く",
 	"shell.retryUpdateCheck": "再試行",
 	"shell.toggleProject": "{{name}} のセッションを切り替え",
+	"shell.projectNeedsAttention": "{{name}} のセッションが入力を待っています",
 	"shell.openSession": "{{title}} を開く",
 	"shell.openOrchestrator": "オーケストレーターを開く",
 	"shell.orchestrator": "オーケストレーター",
