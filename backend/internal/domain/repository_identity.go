@@ -13,7 +13,9 @@ import (
 // Git transport remotes never implicitly authorize additional repositories.
 type RepositoryIdentity struct {
 	Provider string
-	// Host includes an explicit port, matching the SCM provider authority.
+	// Host includes an explicit HTTP(S) port, matching the SCM provider
+	// authority. SSH transport ports are dropped: they never identify the
+	// web/API authority, so ssh://git@host:2200/ns/repo is host "host".
 	Host      string
 	Namespace string
 	Name      string
@@ -75,7 +77,14 @@ func ParseRepositoryIdentity(raw string) (RepositoryIdentity, error) {
 	if provider == "github" && len(parts) != 2 {
 		return RepositoryIdentity{}, invalid
 	}
-	return RepositoryIdentity{Provider: provider, Host: strings.ToLower(u.Host), Namespace: strings.Join(parts[:len(parts)-1], "/"), Name: parts[len(parts)-1]}, nil
+	host := u.Host
+	if u.Scheme == "ssh" {
+		host = u.Hostname()
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+	}
+	return RepositoryIdentity{Provider: provider, Host: strings.ToLower(host), Namespace: strings.Join(parts[:len(parts)-1], "/"), Name: parts[len(parts)-1]}, nil
 }
 
 // ValidateCanonicalRepository keeps an explicitly selected upstream on the

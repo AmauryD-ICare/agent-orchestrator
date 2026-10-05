@@ -9,7 +9,9 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 )
 
-func TestClaimPRSSHPortPreserved(t *testing.T) {
+// SSH transport ports never identify the web/API authority, so an SSH origin on
+// a custom port resolves to the provider host without that port.
+func TestClaimPRSSHPortDropped(t *testing.T) {
 	st := newFakeStore()
 	st.sessions["demo-1"] = domain.SessionRecord{ID: "demo-1", ProjectID: "demo", Kind: domain.KindWorker, Metadata: domain.SessionMetadata{WorkspacePath: "/ws"}}
 	st.projects["demo"] = domain.ProjectRecord{ID: "demo", RepoOriginURL: "ssh://git@gitlab.example.com:8443/alice/repo.git"}
@@ -19,10 +21,49 @@ func TestClaimPRSSHPortPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scm.refs[0].Repo.Host != "gitlab.example.com:8443" {
-		t.Fatalf("claim changed SCM authority to %q; expected explicit origin port 8443", scm.refs[0].Repo.Host)
+	if scm.refs[0].Repo.Host != "gitlab.example.com" {
+		t.Fatalf("claim SCM authority = %q; SSH port must not leak into the provider host", scm.refs[0].Repo.Host)
 	}
 }
+func TestClaimPRSelfManagedGitLabSSHPortOrigin(t *testing.T) {
+	const origin = "ssh://git@gitlab.icareweb.com:2200/production_software/new-pogo-multi-gateway.git"
+	const mr = "https://gitlab.icareweb.com/production_software/new-pogo-multi-gateway/-/merge_requests/32"
+	for _, tc := range []struct {
+		name, origin, ref string
+		wantErr           error
+	}{
+		{"ssh URL with port", origin, mr, nil},
+		{"ssh URL with port numeric ref", origin, "32", nil},
+		{"scp-style origin", "git@gitlab.icareweb.com:production_software/new-pogo-multi-gateway.git", mr, nil},
+		{"different host", "ssh://git@gitlab.other.com:2200/production_software/new-pogo-multi-gateway.git", mr, ErrProjectMismatch},
+		{"HTTPS port is not ignored", "https://gitlab.icareweb.com:2200/production_software/new-pogo-multi-gateway.git", mr, ErrProjectMismatch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newFakeStore()
+			st.sessions["demo-1"] = domain.SessionRecord{ID: "demo-1", ProjectID: "demo", Kind: domain.KindWorker, Metadata: domain.SessionMetadata{WorkspacePath: "/ws"}}
+			st.projects["demo"] = domain.ProjectRecord{ID: "demo", RepoOriginURL: tc.origin}
+			scm, claimer := &claimTargetSCM{}, &fakePRClaimer{}
+			svc := NewWithDeps(Deps{Store: st, SCM: scm, PRClaimer: claimer})
+			_, err := svc.ClaimPR(context.Background(), "demo-1", tc.ref, ClaimPROptions{})
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr != nil {
+				if len(scm.refs) != 0 || claimer.called {
+					t.Fatal("rejected claim reached SCM or storage")
+				}
+				return
+			}
+			if len(scm.refs) != 1 || scm.refs[0].URL != mr || scm.refs[0].Repo.Host != "gitlab.icareweb.com" {
+				t.Fatalf("SCM target = %+v", scm.refs)
+			}
+			if !claimer.called || claimer.gotPR.URL != mr || claimer.gotPR.Repo != "production_software/new-pogo-multi-gateway" {
+				t.Fatalf("persisted claim = %+v", claimer.gotPR)
+			}
+		})
+	}
+}
+
 func TestClaimPRHTTPSPortOriginStillClaimable(t *testing.T) {
 	st := newFakeStore()
 	st.sessions["demo-1"] = domain.SessionRecord{ID: "demo-1", ProjectID: "demo", Kind: domain.KindWorker, Metadata: domain.SessionMetadata{WorkspacePath: "/ws"}}
