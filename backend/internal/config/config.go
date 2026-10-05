@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +88,10 @@ type TelemetryConfig struct {
 	// processors with different projects.
 	SentryDSN string
 }
+
+// DefaultGitLabAllowedHosts are self-managed GitLab hosts trusted without any
+// configuration. Hosts from AO_GITLAB_ALLOWED_HOSTS are added to this list.
+var DefaultGitLabAllowedHosts = []string{"gitlab.icareweb.com"}
 
 // GitLabConfig carries the self-managed GitLab host allowlist and per-host
 // token overrides. It is loaded once at daemon boot from environment variables
@@ -323,16 +328,15 @@ func Load() (Config, error) {
 		cfg.Telemetry.SentryDSN = strings.TrimSpace(raw)
 	}
 
+	cfg.GitLab.AllowedHosts = append([]string(nil), DefaultGitLabAllowedHosts...)
 	if raw, ok := os.LookupEnv("AO_GITLAB_ALLOWED_HOSTS"); ok && raw != "" {
-		hosts := make([]string, 0, 4)
 		for _, h := range strings.Split(raw, ",") {
 			h = strings.TrimSpace(h)
-			if h == "" {
+			if h == "" || slices.Contains(cfg.GitLab.AllowedHosts, h) {
 				continue
 			}
-			hosts = append(hosts, h)
+			cfg.GitLab.AllowedHosts = append(cfg.GitLab.AllowedHosts, h)
 		}
-		cfg.GitLab.AllowedHosts = hosts
 	}
 
 	if raw, ok := os.LookupEnv("AO_GITLAB_HOST_TOKENS"); ok && raw != "" {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -349,8 +350,8 @@ func TestLoadGitLabDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.GitLab.AllowedHosts != nil {
-		t.Errorf("GitLab.AllowedHosts = %v, want nil", cfg.GitLab.AllowedHosts)
+	if !slices.Equal(cfg.GitLab.AllowedHosts, DefaultGitLabAllowedHosts) {
+		t.Errorf("GitLab.AllowedHosts = %v, want %v", cfg.GitLab.AllowedHosts, DefaultGitLabAllowedHosts)
 	}
 	if cfg.GitLab.HostTokens != nil {
 		t.Errorf("GitLab.HostTokens = %v, want nil", cfg.GitLab.HostTokens)
@@ -368,10 +369,12 @@ func TestLoadGitLabAllowedHosts(t *testing.T) {
 		{"trimmed whitespace", " gitlab.mycompany.com , gitlab.internal.corp ", []string{"gitlab.mycompany.com", "gitlab.internal.corp"}},
 		{"empty entries skipped", "gitlab.mycompany.com,,gitlab.internal.corp,", []string{"gitlab.mycompany.com", "gitlab.internal.corp"}},
 		{"with port", "gitlab.internal:8443", []string{"gitlab.internal:8443"}},
+		{"default not duplicated", "gitlab.icareweb.com,gitlab.internal.corp", []string{"gitlab.internal.corp"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("AO_GITLAB_ALLOWED_HOSTS", tc.env)
+			tc.want = append(append([]string(nil), DefaultGitLabAllowedHosts...), tc.want...)
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("Load: %v", err)
